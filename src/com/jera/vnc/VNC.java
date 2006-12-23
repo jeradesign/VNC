@@ -66,7 +66,7 @@ public class VNC {
 		frame.pack();
 		frame.show();
 
-		VNCTester.showScriptFrame(vnc);
+//		VNCTester.showScriptFrame(vnc);
 	}
 
 	public VNC(String theServerName, String thePassword) {
@@ -74,7 +74,7 @@ public class VNC {
 		password = thePassword;
 	}
 
-	public void connect() throws IOException, GeneralSecurityException {
+	public synchronized void connect() throws IOException, GeneralSecurityException {
 		Socket socket = new Socket(serverAddress, VNC_PORT);
 		input = new DataInputStream(socket.getInputStream());
 		output = new DataOutputStream(socket.getOutputStream());
@@ -84,7 +84,33 @@ public class VNC {
 		doClientInitialization();
 		doServerInitialization();
 		observer.setScreenSize(frameBufferWidth, frameBufferHeight);
-		connected = true;
+		sendSetPixelFormat();
+		sendSetEncodings();
+//		output.writeByte(0xde);
+//		output.writeByte(0xad);
+//		output.writeByte(0xbe);
+//		output.writeByte(0xef);
+		connected = true;   // TODO: deal with ordering problem
+		sendFramebufferUpdateRequest(false);
+//		output.writeByte(0xde);
+//		output.writeByte(0xad);
+//		output.writeByte(0xbe);
+//		output.writeByte(0xef);
+	}
+
+	private void sendSetPixelFormat() throws IOException {
+		output.writeByte(0);
+		output.writeByte(0);
+		output.writeByte(0);
+		output.writeByte(0);
+		pixelFormat.writeTo(output);
+	}
+
+	private void sendSetEncodings() throws IOException {
+		output.writeByte(2);
+		output.writeByte(0);
+		output.writeShort(1);
+		output.writeInt(0);
 	}
 
 	private void doProtocolVersion() throws IOException {
@@ -180,8 +206,8 @@ public class VNC {
 			public void run() {
 				while (true) {
 					try {
-						sendFramebufferUpdateRequest();
-						Thread.sleep(500);
+						sendFramebufferUpdateRequest(true);
+						Thread.sleep(30000);
 					}
 					catch (SocketException e) {
 						disconnected();
@@ -203,13 +229,13 @@ public class VNC {
 		return;
 	}
 
-	public synchronized void sendFramebufferUpdateRequest() throws IOException {
+	public synchronized void sendFramebufferUpdateRequest(boolean incremental) throws IOException {
 		if (!connected) {
 			return;
 		}
 		log("requesting upate");
 		output.writeByte(3);
-		output.writeBoolean(true);
+		output.writeBoolean(incremental);
 		output.writeShort(0);
 		output.writeShort(0);
 		output.writeShort(frameBufferWidth);
@@ -286,15 +312,36 @@ public class VNC {
 
 			short[] pixelBuffer = buffer.getData();
 
-			int j=0;
-			for (int y = yPosition; y < yPosition + height; y++) {
-				for (int x = xPosition; x < xPosition + width; x++) {
-					pixelBuffer[y * frameBufferWidth + x] = (short)(((pixelByteBuffer[2 * j + 1] & 0xff) << 8) | (pixelByteBuffer[2 * j] & 0xff));
-					j++;
-				}
-			}
+			copy8BitRaster(yPosition, height, xPosition, width, pixelByteBuffer, pixelBuffer);
 		}
 		observer.imageChanged();
+	}
+
+	private void copy16BitRaster(int theYPosition, int theHeight, int theXPosition, int theWidth, byte[] thePixelByteBuffer, short[] thePixelBuffer) {
+		int j=0;
+		for (int y = theYPosition; y < theYPosition + theHeight; y++) {
+			for (int x = theXPosition; x < theXPosition + theWidth; x++) {
+				thePixelBuffer[y * frameBufferWidth + x] = (short)(((thePixelByteBuffer[2 * j + 1] & 0xff) << 8) | (thePixelByteBuffer[2 * j] & 0xff));
+				j++;
+			}
+		}
+	}
+
+	// { bitsPerPixel = 8, depth = 8, bigEndianFlag = true, trueColorFlag = true,
+	// redMax = 7, greenMax = 7, blueMax = 3, redShift = 0, greenShift = 3, blueShift = 6 }
+	private void copy8BitRaster(int theYPosition, int theHeight, int theXPosition, int theWidth, byte[] thePixelByteBuffer, short[] thePixelBuffer) {
+		int j=0;
+		for (int y = theYPosition; y < theYPosition + theHeight; y++) {
+			for (int x = theXPosition; x < theXPosition + theWidth; x++) {
+				int pixel = thePixelByteBuffer[j] & 0xff;
+				int red = ((pixel >> pixelFormat.getRedShift()) & pixelFormat.getRedMax() << 2);
+				int green = ((pixel >> pixelFormat.getGreenShift()) & pixelFormat.getGreenMax() << 2);
+				int blue = ((pixel >> pixelFormat.getBlueShift()) & pixelFormat.getBlueMax() << 3);
+				int pixel16 = (red << 10) | (green << 5) | blue;
+				thePixelBuffer[y * frameBufferWidth + x] = (short) pixel16;
+				j++;
+			}
+		}
 	}
 
 	private void receiveSetColorMapEntries() {
@@ -375,6 +422,7 @@ public class VNC {
 	}
 
 	public static void log(String message) {
+		System.out.println(message);
 		return;
 	}
 

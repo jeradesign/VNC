@@ -2,6 +2,7 @@ package com.jera.vnc;
 
 import java.io.DataInput;
 import java.io.IOException;
+import java.io.DataOutput;
 
 /**
  * Created by IntelliJ IDEA.
@@ -40,6 +41,22 @@ public class PixelFormat {
 		input.readByte();
 		input.readByte();
 		input.readByte();
+	}
+
+	public void writeTo(DataOutput out) throws IOException {
+		out.writeByte(bitsPerPixel);
+		out.writeByte(depth);
+		out.writeBoolean(bigEndianFlag);
+		out.writeBoolean(trueColorFlag);
+		out.writeShort(redMax);
+		out.writeShort(greenMax);
+		out.writeShort(blueMax);
+		out.writeByte(redShift);
+		out.writeByte(greenShift);
+		out.writeByte(blueShift);
+		out.writeByte(0);
+		out.writeByte(0);
+		out.writeByte(0);
 	}
 
 	public int getBitsPerPixel() {
