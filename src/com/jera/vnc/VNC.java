@@ -122,7 +122,17 @@ public class VNC {
 	}
 
 	private void doSecurity() throws IOException, GeneralSecurityException {
-		securityType = input.readInt();
+		int count = input.readByte() & 0xff;
+		int[] securityTypes = new int[count];
+
+		securityType = 0;
+		for (int i = 0; i < count; i++) {
+			securityTypes[i] = input.readByte() & 0xff;
+			if (securityTypes[i] > securityType && securityTypes[i] <= 2) {
+				securityType = securityTypes[i];
+			}
+		}
+		output.writeByte(securityType);
 		if (securityType == 0) {
 			throw new IOException(readString());
 		}
@@ -138,12 +148,12 @@ public class VNC {
 
 		authenticationResponse = input.readInt();
 		if (authenticationResponse != 0) {
-			throw new IOException("Couldn't authenticate with VNC server (response = " + authenticationResponse + ").");
+			throw new IOException("Couldn't authenticate with VNC server (response = " + readString() + ").");
 		}
 	}
 
 	private void doClientInitialization() throws IOException {
-		output.write(sharedFlag);
+		output.writeByte(sharedFlag);
 	}
 
 	private void doServerInitialization() throws IOException {
@@ -312,7 +322,7 @@ public class VNC {
 
 			short[] pixelBuffer = buffer.getData();
 
-			copy8BitRaster(yPosition, height, xPosition, width, pixelByteBuffer, pixelBuffer);
+			copy16BitRaster(yPosition, height, xPosition, width, pixelByteBuffer, pixelBuffer);
 		}
 		observer.imageChanged();
 	}
